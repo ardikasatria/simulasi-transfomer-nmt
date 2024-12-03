@@ -1,0 +1,82 @@
+/* Reset Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    background: linear-gradient(to right, #141E30, #243B55);
+    color: #ECECEC;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    text-align: center;
+    line-height: 1.6;
+}
+
+/* Container for Content */
+.container {
+    max-width: 800px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* Heading Styling */
+h1 {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+    color: #00D8FF;
+    text-shadow: 0 0 10px #00D8FF, 0 0 20px #00D8FF;
+}
+
+/* Paragraph Styling */
+p {
+    font-size: 1.2rem;
+    color: #ECECEC;
+    margin-bottom: 20px;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+}
+
+/* Button Styling */
+a.button {
+    display: inline-block;
+    padding: 10px 20px;
+    font-size: 1rem;
+    color: #141E30;
+    background: #00D8FF;
+    border-radius: 5px;
+    text-decoration: none;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 216, 255, 0.2);
+}
+
+a.button:hover {
+    background: #141E30;
+    color: #00D8FF;
+    box-shadow: 0 4px 15px rgba(255, 255, 255, 0.4);
+}
+
+/* Animation for Text */
+@keyframes glow {
+    0% {
+        text-shadow: 0 0 5px #00D8FF, 0 0 10px #00D8FF, 0 0 15px #00D8FF;
+    }
+    50% {
+        text-shadow: 0 0 20px #00D8FF, 0 0 30px #00D8FF, 0 0 40px #00D8FF;
+    }
+    100% {
+        text-shadow: 0 0 5px #00D8FF, 0 0 10px #00D8FF, 0 0 15px #00D8FF;
+    }
+}
+
+h1 {
+    animation: glow 2s infinite;
+}
