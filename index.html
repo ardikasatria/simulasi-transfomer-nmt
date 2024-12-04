@@ -7628,7 +7628,6 @@ $$</p>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
 <div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
-<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 
 <span class="k">class</span> <span class="nc">MultiHeadAttention</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">'''</span>
@@ -7714,6 +7713,65 @@ $$</p>
         <span class="c1"># 6. Residual Connection + Layer Normalization</span>
         <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer_norm</span><span class="p">(</span><span class="n">output</span> <span class="o">+</span> <span class="n">residual</span><span class="p">)</span>
 
+        <span class="k">return</span> <span class="n">output</span><span class="p">,</span> <span class="n">attn</span>
+    
+<span class="k">class</span> <span class="nc">ScaledDotProductAttention</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">'''</span>
+<span class="sd">    Scaled Dot-Product Attention:</span>
+<span class="sd">    - Implementasi perhatian berdasarkan produk titik (dot product) dengan skala.</span>
+<span class="sd">    - Langkah ini merupakan inti dari perhitungan perhatian (attention).</span>
+<span class="sd">    '''</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">temperature</span><span class="p">,</span> <span class="n">attn_dropout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="c1"># Temperatur digunakan untuk penskalaan perhatian agar lebih stabil.</span>
+        <span class="c1"># Biasanya ini adalah akar kuadrat dari dimensi kunci (key).</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">temperature</span> <span class="o">=</span> <span class="n">temperature</span>  
+        
+        <span class="c1"># Dropout diterapkan untuk regularisasi agar mencegah overfitting.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dropout</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="n">attn_dropout</span><span class="p">)</span>
+        
+        <span class="c1"># Softmax digunakan untuk mengubah skor menjadi distribusi probabilitas.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">softmax</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Softmax</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Args:</span>
+<span class="sd">            q: Query tensor dengan shape (batch_size, seq_len, d_k)</span>
+<span class="sd">            k: Key tensor dengan shape (batch_size, seq_len, d_k)</span>
+<span class="sd">            v: Value tensor dengan shape (batch_size, seq_len, d_v)</span>
+<span class="sd">            mask: Tensor mask untuk menutupi posisi tertentu (optional).</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            output: Tensor hasil (batch_size, seq_len, d_v)</span>
+<span class="sd">            attn: Tensor distribusi perhatian (batch_size, seq_len, seq_len)</span>
+<span class="sd">        """</span>
+        <span class="c1"># 1. Hitung dot product antara Query (q) dan transpose Key (k).</span>
+        <span class="c1">#    torch.bmm digunakan untuk melakukan operasi matriks batch-wise.</span>
+        <span class="c1">#    Resulting shape: (batch_size, seq_len, seq_len)</span>
+        <span class="n">attn</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">bmm</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="n">k</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+        <span class="c1"># 2. Bagikan hasil dot product dengan temperatur untuk penskalaan.</span>
+        <span class="c1">#    Skala ini digunakan agar nilai perhatian tidak terlalu besar</span>
+        <span class="c1">#    sehingga stabilitas perhitungan meningkat (mencegah eksploding softmax).</span>
+        <span class="n">attn</span> <span class="o">=</span> <span class="n">attn</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">temperature</span>
+
+        <span class="c1"># 3. Jika mask disediakan, isi nilai yang dimask dengan -inf.</span>
+        <span class="c1">#    Ini memastikan softmax mengabaikan nilai yang dimask.</span>
+        <span class="k">if</span> <span class="n">mask</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">attn</span> <span class="o">=</span> <span class="n">attn</span><span class="o">.</span><span class="n">masked_fill</span><span class="p">(</span><span class="n">mask</span><span class="o">.</span><span class="n">bool</span><span class="p">(),</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+
+        <span class="c1"># 4. Terapkan softmax pada skor perhatian untuk menghasilkan distribusi probabilitas.</span>
+        <span class="c1">#    Distribusi ini menunjukkan seberapa kuat perhatian terhadap posisi tertentu.</span>
+        <span class="n">attn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">softmax</span><span class="p">(</span><span class="n">attn</span><span class="p">)</span>
+
+        <span class="c1"># 5. Terapkan dropout untuk mengurangi risiko overfitting.</span>
+        <span class="n">attn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dropout</span><span class="p">(</span><span class="n">attn</span><span class="p">)</span>
+
+        <span class="c1"># 6. Hitung hasil akhir dengan mengalikan perhatian (attn) dengan Value (v).</span>
+        <span class="c1">#    torch.bmm digunakan untuk operasi batch-wise matrix multiplication.</span>
+        <span class="c1">#    Resulting shape: (batch_size, seq_len, d_v)</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">bmm</span><span class="p">(</span><span class="n">attn</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span>
+
+        <span class="c1"># 7. Return hasil akhir (output) dan skor perhatian (attn).</span>
         <span class="k">return</span> <span class="n">output</span><span class="p">,</span> <span class="n">attn</span>
 </pre></div>
 </div>
@@ -7832,7 +7890,8 @@ Output berupa Representasi akhir dari urutan input.</p>
 <div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="kn">from</span> <span class="nn">config</span> <span class="kn">import</span> <span class="n">Config</span>
+<span class="kn">from</span> <span class="nn">.attention</span> <span class="kn">import</span> <span class="n">MultiHeadAttention</span>
 
 <span class="k">class</span> <span class="nc">Encoder</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Encoder of Transformer including self-attention and feed-forward network."""</span>
@@ -7849,6 +7908,16 @@ Output berupa Representasi akhir dari urutan input.</p>
 <span class="sd">        - dropout: Tingkat dropout</span>
 <span class="sd">        - pe_maxlen: Maksimal panjang positional encoding</span>
 <span class="sd">        '''</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_src_vocab</span> <span class="o">=</span> <span class="n">n_src_vocab</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_layers</span> <span class="o">=</span> <span class="n">n_layers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_head</span> <span class="o">=</span> <span class="n">n_head</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">d_k</span> <span class="o">=</span> <span class="n">d_k</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">d_v</span> <span class="o">=</span> <span class="n">d_v</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">d_model</span> <span class="o">=</span> <span class="n">d_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">d_inner</span> <span class="o">=</span> <span class="n">d_inner</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dropout_rate</span> <span class="o">=</span> <span class="n">dropout</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pe_maxlen</span> <span class="o">=</span> <span class="n">pe_maxlen</span>
+
         <span class="nb">super</span><span class="p">(</span><span class="n">Encoder</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
 
         <span class="c1"># Token Embedding: Mengubah token menjadi representasi vektor</span>
@@ -8064,11 +8133,7 @@ Vektor hasil diproyeksikan ke ruang kata target:</p>
 <div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">torch</span>
-<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
-<span class="kn">import</span> <span class="nn">torch.nn.functional</span> <span class="k">as</span> <span class="nn">F</span>
-
-<span class="k">class</span> <span class="nc">Decoder</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="k">class</span> <span class="nc">Decoder</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">'''</span>
 <span class="sd">    Decoder model dengan mekanisme Self-Attention</span>
 <span class="sd">    '''</span>
@@ -8169,6 +8234,75 @@ Vektor hasil diproyeksikan ke ruang kata target:</p>
         <span class="n">ys_out_pad</span> <span class="o">=</span> <span class="n">pad_list</span><span class="p">(</span><span class="n">ys_out</span><span class="p">,</span> <span class="n">Config</span><span class="o">.</span><span class="n">IGNORE_ID</span><span class="p">)</span>
         <span class="k">assert</span> <span class="n">ys_in_pad</span><span class="o">.</span><span class="n">size</span><span class="p">()</span> <span class="o">==</span> <span class="n">ys_out_pad</span><span class="o">.</span><span class="n">size</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">ys_in_pad</span><span class="p">,</span> <span class="n">ys_out_pad</span>
+
+<span class="k">class</span> <span class="nc">DecoderLayer</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">'''</span>
+<span class="sd">    Decoder Layer:</span>
+<span class="sd">    - Terdiri dari tiga komponen utama:</span>
+<span class="sd">      1. Self-Attention pada input decoder.</span>
+<span class="sd">      2. Encoder-Decoder Attention untuk menyelaraskan input decoder dengan output encoder.</span>
+<span class="sd">      3. Feed-Forward Network untuk menghasilkan representasi akhir.</span>
+<span class="sd">    '''</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">d_model</span><span class="p">,</span> <span class="n">d_inner</span><span class="p">,</span> <span class="n">n_head</span><span class="p">,</span> <span class="n">d_k</span><span class="p">,</span> <span class="n">d_v</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">DecoderLayer</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="c1"># Multi-Head Self-Attention pada input decoder</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">slf_attn</span> <span class="o">=</span> <span class="n">MultiHeadAttention</span><span class="p">(</span><span class="n">n_head</span><span class="p">,</span> <span class="n">d_model</span><span class="p">,</span> <span class="n">d_k</span><span class="p">,</span> <span class="n">d_v</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="n">dropout</span><span class="p">)</span>
+        
+        <span class="c1"># Multi-Head Attention antara output encoder dan input decoder</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">enc_attn</span> <span class="o">=</span> <span class="n">MultiHeadAttention</span><span class="p">(</span><span class="n">n_head</span><span class="p">,</span> <span class="n">d_model</span><span class="p">,</span> <span class="n">d_k</span><span class="p">,</span> <span class="n">d_v</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="n">dropout</span><span class="p">)</span>
+        
+        <span class="c1"># Feed-Forward Network untuk memperkaya representasi</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pos_ffn</span> <span class="o">=</span> <span class="n">PositionwiseFeedForward</span><span class="p">(</span><span class="n">d_model</span><span class="p">,</span> <span class="n">d_inner</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="n">dropout</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dec_input</span><span class="p">,</span> <span class="n">enc_output</span><span class="p">,</span> <span class="n">non_pad_mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">slf_attn_mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">dec_enc_attn_mask</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Args:</span>
+<span class="sd">            dec_input: Input sequence ke decoder (batch_size, seq_len, d_model)</span>
+<span class="sd">            enc_output: Output dari encoder (batch_size, seq_len, d_model)</span>
+<span class="sd">            non_pad_mask: Mask untuk mengabaikan padding pada input (batch_size, seq_len, 1)</span>
+<span class="sd">            slf_attn_mask: Mask untuk self-attention (batch_size, seq_len, seq_len)</span>
+<span class="sd">            dec_enc_attn_mask: Mask untuk encoder-decoder attention (batch_size, seq_len, seq_len)</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            dec_output: Representasi akhir dari decoder layer (batch_size, seq_len, d_model)</span>
+<span class="sd">            dec_slf_attn: Attention weights dari self-attention</span>
+<span class="sd">            dec_enc_attn: Attention weights dari encoder-decoder attention</span>
+<span class="sd">        """</span>
+
+        <span class="c1"># 1. Self-Attention pada input decoder:</span>
+        <span class="c1"># - Menghitung perhatian antar elemen dalam input decoder.</span>
+        <span class="c1"># - Mask self-attention adalah segitiga atas untuk menghindari "melihat ke masa depan".</span>
+        <span class="n">dec_output</span><span class="p">,</span> <span class="n">dec_slf_attn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">slf_attn</span><span class="p">(</span>
+            <span class="n">dec_input</span><span class="p">,</span> <span class="n">dec_input</span><span class="p">,</span> <span class="n">dec_input</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">slf_attn_mask</span>
+        <span class="p">)</span>
+        
+        <span class="c1"># 2. Mask padding dalam output self-attention:</span>
+        <span class="c1"># - Perkalian elemen-wisely dengan `non_pad_mask` untuk memotong pengaruh padding.</span>
+        <span class="n">dec_output</span> <span class="o">*=</span> <span class="n">non_pad_mask</span>
+
+        <span class="c1"># 3. Encoder-Decoder Attention:</span>
+        <span class="c1"># - Menghitung perhatian antara output encoder dan hasil dari self-attention decoder.</span>
+        <span class="c1"># - Mask ini digunakan untuk menghindari posisi yang tidak relevan di encoder.</span>
+        <span class="n">dec_output</span><span class="p">,</span> <span class="n">dec_enc_attn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">enc_attn</span><span class="p">(</span>
+            <span class="n">dec_output</span><span class="p">,</span> <span class="n">enc_output</span><span class="p">,</span> <span class="n">enc_output</span><span class="p">,</span> <span class="n">mask</span><span class="o">=</span><span class="n">dec_enc_attn_mask</span>
+        <span class="p">)</span>
+        
+        <span class="c1"># 4. Mask padding dalam output encoder-decoder attention:</span>
+        <span class="n">dec_output</span> <span class="o">*=</span> <span class="n">non_pad_mask</span>
+
+        <span class="c1"># 5. Feed-Forward Network:</span>
+        <span class="c1"># - Menerapkan jaringan feed-forward untuk memperkaya representasi fitur.</span>
+        <span class="c1"># - Digunakan untuk belajar pola non-linear tambahan.</span>
+        <span class="n">dec_output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pos_ffn</span><span class="p">(</span><span class="n">dec_output</span><span class="p">)</span>
+        
+        <span class="c1"># 6. Mask padding setelah Feed-Forward:</span>
+        <span class="c1"># - Mengabaikan kontribusi padding ke hasil akhir.</span>
+        <span class="n">dec_output</span> <span class="o">*=</span> <span class="n">non_pad_mask</span>
+
+        <span class="c1"># 7. Return hasil akhir:</span>
+        <span class="c1"># - `dec_output`: Representasi akhir dari layer decoder.</span>
+        <span class="c1"># - `dec_slf_attn`: Skor perhatian self-attention.</span>
+        <span class="c1"># - `dec_enc_attn`: Skor perhatian encoder-decoder attention.</span>
+        <span class="k">return</span> <span class="n">dec_output</span><span class="p">,</span> <span class="n">dec_slf_attn</span><span class="p">,</span> <span class="n">dec_enc_attn</span>
 </pre></div>
 </div>
 </div>
@@ -8289,9 +8423,7 @@ Hitung jumlah prediksi yang cocok dengan label target:</p>
 <div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">torch</span>
-<span class="kn">import</span> <span class="nn">torch.nn.functional</span> <span class="k">as</span> <span class="nn">F</span>
-<span class="kn">from</span> <span class="nn">config</span> <span class="kn">import</span> <span class="n">Config</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">torch.nn.functional</span> <span class="k">as</span> <span class="nn">F</span>
 
 <span class="k">def</span> <span class="nf">cal_performance</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">gold</span><span class="p">,</span> <span class="n">smoothing</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""</span>
@@ -8469,6 +8601,95 @@ $$</p>
         <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer_norm</span><span class="p">(</span><span class="n">output</span> <span class="o">+</span> <span class="n">residual</span><span class="p">)</span>  <span class="c1"># Residual connection + Layer Normalization</span>
         <span class="k">return</span> <span class="n">output</span>
 </pre></div>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="sd">"""</span>
+<span class="sd">Simpan sebagai utils</span>
+<span class="sd">"""</span>
+<span class="k">class</span> <span class="nc">PositionalEncoding</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">d_model</span><span class="p">,</span> <span class="n">max_len</span><span class="o">=</span><span class="mi">5000</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">PositionalEncoding</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="c1"># Membuat tensor PE dengan dimensi [max_len, d_model]</span>
+        <span class="n">pe</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">max_len</span><span class="p">,</span> <span class="n">d_model</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+        <span class="c1"># Posisi token dalam urutan</span>
+        <span class="n">position</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_len</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">float</span><span class="p">()</span>
+
+        <span class="c1"># Term eksponensial untuk normalisasi posisi</span>
+        <span class="n">div_term</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">d_model</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">float</span><span class="p">()</span> <span class="o">*</span> <span class="o">-</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">10000.0</span><span class="p">)</span> <span class="o">/</span> <span class="n">d_model</span><span class="p">))</span>
+
+        <span class="c1"># Posisi genap menggunakan sin</span>
+        <span class="n">pe</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">::</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">position</span> <span class="o">*</span> <span class="n">div_term</span><span class="p">)</span>
+
+        <span class="c1"># Posisi ganjil menggunakan cos</span>
+        <span class="n">pe</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">position</span> <span class="o">*</span> <span class="n">div_term</span><span class="p">)</span>
+
+        <span class="c1"># Tambahkan dimensi batch</span>
+        <span class="n">pe</span> <span class="o">=</span> <span class="n">pe</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="c1"># Register buffer untuk menyimpan tensor</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="s1">'pe'</span><span class="p">,</span> <span class="n">pe</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">'''</span>
+<span class="sd">        Mengambil PE untuk panjang sequence tertentu.</span>
+<span class="sd">        :param input: Tensor input dengan dimensi [batch_size, max_len]</span>
+<span class="sd">        :return: Positional Encoding [1, max_len, d_model]</span>
+<span class="sd">        '''</span>
+        <span class="n">length</span> <span class="o">=</span> <span class="nb">input</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">pe</span><span class="p">[:,</span> <span class="p">:</span><span class="n">length</span><span class="p">]</span>
+    
+<span class="k">class</span> <span class="nc">PositionwiseFeedForward</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">d_model</span><span class="p">,</span> <span class="n">d_ff</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">PositionwiseFeedForward</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w_1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">d_model</span><span class="p">,</span> <span class="n">d_ff</span><span class="p">)</span>  <span class="c1"># Layer pertama</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w_2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">d_ff</span><span class="p">,</span> <span class="n">d_model</span><span class="p">)</span>  <span class="c1"># Layer kedua</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dropout</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="n">dropout</span><span class="p">)</span>  <span class="c1"># Dropout untuk regularisasi</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">layer_norm</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">LayerNorm</span><span class="p">(</span><span class="n">d_model</span><span class="p">)</span>  <span class="c1"># Normalisasi lapisan</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">'''</span>
+<span class="sd">        :param x: Tensor input [batch_size, seq_len, d_model]</span>
+<span class="sd">        :return: Tensor output dengan dimensi yang sama</span>
+<span class="sd">        '''</span>
+        <span class="n">residual</span> <span class="o">=</span> <span class="n">x</span>  <span class="c1"># Koneksi residu</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">w_2</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">relu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">w_1</span><span class="p">(</span><span class="n">x</span><span class="p">)))</span>  <span class="c1"># FFN</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dropout</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>  <span class="c1"># Terapkan dropout</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer_norm</span><span class="p">(</span><span class="n">output</span> <span class="o">+</span> <span class="n">residual</span><span class="p">)</span>  <span class="c1"># Residual connection + Layer Normalization</span>
+        <span class="k">return</span> <span class="n">output</span>
+    
+<span class="k">class</span> <span class="nc">PositionwiseFeedForwardUseConv</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">d_in</span><span class="p">,</span> <span class="n">d_hid</span><span class="p">,</span> <span class="n">dropout</span><span class="o">=</span><span class="mf">0.1</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">PositionwiseFeedForwardUseConv</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w_1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv1d</span><span class="p">(</span><span class="n">d_in</span><span class="p">,</span> <span class="n">d_hid</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># Convolution pertama</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w_2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Conv1d</span><span class="p">(</span><span class="n">d_hid</span><span class="p">,</span> <span class="n">d_in</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># Convolution kedua</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">layer_norm</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">LayerNorm</span><span class="p">(</span><span class="n">d_in</span><span class="p">)</span>  <span class="c1"># Normalisasi lapisan</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dropout</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="n">dropout</span><span class="p">)</span>  <span class="c1"># Dropout untuk regularisasi</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">'''</span>
+<span class="sd">        :param x: Tensor input [batch_size, seq_len, d_in]</span>
+<span class="sd">        :return: Tensor output dengan dimensi yang sama</span>
+<span class="sd">        '''</span>
+        <span class="n">residual</span> <span class="o">=</span> <span class="n">x</span>  <span class="c1"># Koneksi residu</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>  <span class="c1"># Transpos dimensi untuk Conv1D</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">w_2</span><span class="p">(</span><span class="n">F</span><span class="o">.</span><span class="n">relu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">w_1</span><span class="p">(</span><span class="n">output</span><span class="p">)))</span>  <span class="c1"># FFN dengan Convolution</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">output</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>  <span class="c1"># Kembalikan dimensi awal</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dropout</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>  <span class="c1"># Terapkan dropout</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">layer_norm</span><span class="p">(</span><span class="n">output</span> <span class="o">+</span> <span class="n">residual</span><span class="p">)</span>  <span class="c1"># Residual connection + Layer Normalization</span>
+        <span class="k">return</span> <span class="n">output</span>
+</pre></div>
+</div>
 </div>
 </div>
 </div>
@@ -8866,7 +9087,10 @@ $$</p>
 <div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="k">def</span> <span class="nf">get_non_pad_mask</span><span class="p">(</span><span class="n">padded_input</span><span class="p">,</span> <span class="n">input_lengths</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pad_idx</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="sd">"""</span>
+<span class="sd">Simpan Sebagai Module (Kompenen Lainnya)</span>
+<span class="sd">"""</span>
+<span class="k">def</span> <span class="nf">get_non_pad_mask</span><span class="p">(</span><span class="n">padded_input</span><span class="p">,</span> <span class="n">input_lengths</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pad_idx</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Masking padding token menjadi 0.</span>
 <span class="sd">    Args:</span>
@@ -8998,9 +9222,14 @@ $$</p>
 <div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div>
 <div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
 <div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="k">class</span> <span class="nc">Config</span><span class="p">:</span>
+<div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">logging</span>
+
+<span class="k">class</span> <span class="nc">Config</span><span class="p">:</span>
     <span class="c1"># **Perangkat yang digunakan (CPU atau GPU)**</span>
-    <span class="n">device</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s1">'cuda: 0'</span> <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="s1">'cpu'</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="ow">and</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">device_count</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s1">'cuda:0'</span><span class="p">)</span>  <span class="c1"># Use the first GPU if available</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s1">'cpu'</span><span class="p">)</span> 
 
     <span class="c1"># **Lokasi file data**</span>
     <span class="c1"># File data input/output yang telah diproses.</span>
@@ -9008,12 +9237,12 @@ $$</p>
     <span class="n">vocab_file</span> <span class="o">=</span> <span class="s1">'./data/vocab.pkl'</span>     <span class="c1"># File untuk menyimpan kosakata</span>
 
     <span class="c1"># **Lokasi file pelatihan**</span>
-    <span class="n">train_translation_id_filename</span> <span class="o">=</span> <span class="s1">'./data/train.id'</span>  <span class="c1"># File input bahasa Indonesia untuk pelatihan</span>
-    <span class="n">train_translation_en_filename</span> <span class="o">=</span> <span class="s1">'./data/train.en'</span>  <span class="c1"># File output bahasa Inggris untuk pelatihan</span>
+    <span class="n">train_translation_id_filename</span> <span class="o">=</span> <span class="s1">'./data/train_id.txt'</span>  <span class="c1"># File input bahasa Indonesia untuk pelatihan</span>
+    <span class="n">train_translation_en_filename</span> <span class="o">=</span> <span class="s1">'./data/train_en.txt'</span>  <span class="c1"># File output bahasa Inggris untuk pelatihan</span>
 
-    <span class="c1"># **Lokasi file validasi**</span>
-    <span class="n">valid_translation_id_filename</span> <span class="o">=</span> <span class="s1">'./data/valid.id'</span>  <span class="c1"># File input bahasa Indonesia untuk validasi</span>
-    <span class="n">valid_translation_en_filename</span> <span class="o">=</span> <span class="s1">'./data/valid.en'</span>  <span class="c1"># File output bahasa Inggris untuk validasi</span>
+    <span class="c1"># **Lokasi file validasi**``</span>
+    <span class="n">valid_translation_id_filename</span> <span class="o">=</span> <span class="s1">'./data/valid_id.txt'</span>  <span class="c1"># File input bahasa Indonesia untuk validasi</span>
+    <span class="n">valid_translation_en_filename</span> <span class="o">=</span> <span class="s1">'./data/valid_en.txt'</span>  <span class="c1"># File output bahasa Inggris untuk validasi</span>
 
     <span class="c1"># **Kosakata**</span>
     <span class="n">n_src_vocab</span> <span class="o">=</span> <span class="mi">15000</span>  <span class="c1"># Ukuran kosakata untuk input/source</span>
@@ -9045,6 +9274,22 @@ $$</p>
 
     <span class="c1"># **Dimensi Model**</span>
     <span class="n">d_model</span> <span class="o">=</span> <span class="mi">512</span>  <span class="c1"># Dimensi vektor embedding (hidden layer size)</span>
+
+    <span class="c1"># Batch size untuk pelatihan dan validasi</span>
+    <span class="n">batch_size</span> <span class="o">=</span> <span class="mi">64</span>
+
+        <span class="c1"># Jumlah pekerja (threads) untuk DataLoader</span>
+    <span class="n">num_workers</span> <span class="o">=</span> <span class="mi">4</span>
+
+    <span class="c1"># Learning rate untuk optimizer</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="mf">0.001</span>
+
+    <span class="c1"># Warmup steps untuk TransformerOptimizer</span>
+    <span class="n">warmup_steps</span> <span class="o">=</span> <span class="mi">4000</span>
+
+    <span class="c1"># Jumlah epoch</span>
+    <span class="n">epochs</span> <span class="o">=</span> <span class="mi">5</span>
+
 
 <span class="k">def</span> <span class="nf">get_logger</span><span class="p">():</span>
 <span class="w">    </span><span class="sd">'''</span>
@@ -9277,153 +9522,6 @@ Menyediakan konfigurasi fleksibel melalui argumen command line.</p>
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
-<h1 id="Melakukan-Genarate-Data"><strong>Melakukan Genarate Data</strong><a class="anchor-link" href="#Melakukan-Genarate-Data">¶</a></h1><p>Untuk menghasilkan dataset terstruktur dengan sequence input-output, namun tanpa padding. Padding dilakukan selanjutnya pada pra-pemrosesan data atau selama pelatihan.</p>
-</div>
-</div>
-</div>
-</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
-<div class="jp-Cell-inputWrapper" tabindex="0">
-<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
-</div>
-<div class="jp-InputArea jp-Cell-inputArea">
-<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div>
-<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
-<div class="cm-editor cm-s-jupyter">
-<div class="highlight hl-ipython3"><pre><span></span><span class="sd">"""</span>
-<span class="sd">Menghasilkan dataset yang telah diproses untuk model Transformer.</span>
-<span class="sd">Melibatkan pembacaan data input-output, padding, dan pengelolaan dataset.</span>
-<span class="sd">"""</span>
-<span class="kn">import</span> <span class="nn">pickle</span>
-<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="kn">import</span> <span class="nn">torch</span>
-<span class="kn">from</span> <span class="nn">torch.utils.data</span> <span class="kn">import</span> <span class="n">Dataset</span>
-<span class="kn">from</span> <span class="nn">torch.utils.data.dataloader</span> <span class="kn">import</span> <span class="n">default_collate</span>
-<span class="kn">from</span> <span class="nn">utils</span> <span class="kn">import</span> <span class="n">sequence_to_text</span>
-<span class="kn">from</span> <span class="nn">config</span> <span class="kn">import</span> <span class="n">Config</span>
-
-<span class="c1"># **Memuat data dari file yang disiapkan sebelumnya**</span>
-<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">data_file</span><span class="p">,</span> <span class="s1">'rb'</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
-    <span class="n">data</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>  <span class="c1"># Data harus berisi split seperti 'train', 'valid', 'test'</span>
-
-
-<span class="k">def</span> <span class="nf">get_data</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Membaca file teks dan mengembalikan setiap baris sebagai elemen dalam list.</span>
-<span class="sd">    Args:</span>
-<span class="sd">        filename: Lokasi file teks.</span>
-<span class="sd">    Returns:</span>
-<span class="sd">        List baris teks dari file.</span>
-<span class="sd">    """</span>
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">'r'</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
-        <span class="n">data</span> <span class="o">=</span> <span class="n">file</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
-    <span class="n">data</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">data</span><span class="p">]</span>  <span class="c1"># Membersihkan spasi di awal/akhir baris</span>
-    <span class="k">return</span> <span class="n">data</span>
-
-
-<span class="k">def</span> <span class="nf">pad_collate</span><span class="p">(</span><span class="n">batch</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Melakukan padding pada batch data agar semua sequence memiliki panjang yang sama.</span>
-<span class="sd">    Args:</span>
-<span class="sd">        batch: Daftar pasangan input-output sequence [(input, output)].</span>
-<span class="sd">    Returns:</span>
-<span class="sd">        Batch dengan input dan output yang telah dipadding, diurutkan berdasarkan panjang input.</span>
-<span class="sd">    """</span>
-    <span class="c1"># Cari panjang maksimum input dan output dalam batch</span>
-    <span class="n">max_input_len</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">'-inf'</span><span class="p">)</span>
-    <span class="n">max_target_len</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">'-inf'</span><span class="p">)</span>
-
-    <span class="k">for</span> <span class="n">elem</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">:</span>
-        <span class="n">src</span><span class="p">,</span> <span class="n">tgt</span> <span class="o">=</span> <span class="n">elem</span>
-        <span class="n">max_input_len</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_input_len</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">src</span><span class="p">))</span>  <span class="c1"># Panjang maksimum input</span>
-        <span class="n">max_target_len</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_target_len</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">tgt</span><span class="p">))</span>  <span class="c1"># Panjang maksimum output</span>
-
-    <span class="c1"># Lakukan padding pada input dan output</span>
-    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">elem</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">batch</span><span class="p">):</span>
-        <span class="n">src</span><span class="p">,</span> <span class="n">tgt</span> <span class="o">=</span> <span class="n">elem</span>
-        <span class="n">padded_input</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_input_len</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">src</span><span class="p">)),</span> <span class="s1">'constant'</span><span class="p">,</span> <span class="n">constant_values</span><span class="o">=</span><span class="n">Config</span><span class="o">.</span><span class="n">pad_id</span><span class="p">)</span>
-        <span class="n">padded_target</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span><span class="n">tgt</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_target_len</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">tgt</span><span class="p">)),</span> <span class="s1">'constant'</span><span class="p">,</span> <span class="n">constant_values</span><span class="o">=</span><span class="n">Config</span><span class="o">.</span><span class="n">IGNORE_ID</span><span class="p">)</span>
-        <span class="n">batch</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">padded_input</span><span class="p">,</span> <span class="n">padded_target</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">src</span><span class="p">))</span>  <span class="c1"># Tambahkan panjang input untuk sorting</span>
-
-    <span class="c1"># Urutkan batch berdasarkan panjang input (panjang ke pendek)</span>
-    <span class="n">batch</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-
-    <span class="c1"># Kembalikan batch yang diproses</span>
-    <span class="k">return</span> <span class="n">default_collate</span><span class="p">(</span><span class="n">batch</span><span class="p">)</span>
-
-
-<span class="k">class</span> <span class="nc">TranslateDataset</span><span class="p">(</span><span class="n">Dataset</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Dataset PyTorch untuk data terjemahan.</span>
-<span class="sd">    """</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">split</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""</span>
-<span class="sd">        Inisialisasi dataset berdasarkan split data.</span>
-<span class="sd">        Args:</span>
-<span class="sd">            split: Split data yang akan digunakan ('train', 'valid', 'test').</span>
-<span class="sd">        """</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">samples</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">split</span><span class="p">]</span>  <span class="c1"># Pilih split dataset</span>
-
-    <span class="k">def</span> <span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""</span>
-<span class="sd">        Mengembalikan pasangan input-output sequence tanpa padding.</span>
-<span class="sd">        Args:</span>
-<span class="sd">            item: Indeks sample dalam dataset.</span>
-<span class="sd">        Returns:</span>
-<span class="sd">            Tuple input-output sequence dalam bentuk array numpy.</span>
-<span class="sd">        """</span>
-        <span class="n">sample</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">samples</span><span class="p">[</span><span class="n">item</span><span class="p">]</span>
-        <span class="n">src_text</span> <span class="o">=</span> <span class="n">sample</span><span class="p">[</span><span class="s1">'in'</span><span class="p">]</span>  <span class="c1"># Input sequence</span>
-        <span class="n">tgt_text</span> <span class="o">=</span> <span class="n">sample</span><span class="p">[</span><span class="s1">'out'</span><span class="p">]</span>  <span class="c1"># Output sequence</span>
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">src_text</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">long</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">tgt_text</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">long</span><span class="p">)</span>
-
-    <span class="k">def</span> <span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""</span>
-<span class="sd">        Mendapatkan jumlah sample dalam dataset.</span>
-<span class="sd">        Returns:</span>
-<span class="sd">            Jumlah sample dalam dataset.</span>
-<span class="sd">        """</span>
-        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">samples</span><span class="p">)</span>
-
-
-<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
-<span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Demonstrasi penggunaan dataset validasi dan kosakata.</span>
-<span class="sd">    """</span>
-    <span class="c1"># Muat dataset validasi</span>
-    <span class="n">valid_dataset</span> <span class="o">=</span> <span class="n">TranslateDataset</span><span class="p">(</span><span class="s1">'valid'</span><span class="p">)</span>
-
-    <span class="c1"># Muat kosakata</span>
-    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">vocab_file</span><span class="p">,</span> <span class="s1">'rb'</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
-        <span class="n">data</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
-
-    <span class="c1"># Peta ID ke karakter untuk input dan output</span>
-    <span class="n">src_idx2char</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">'dict'</span><span class="p">][</span><span class="s1">'src_idx2char'</span><span class="p">]</span>  <span class="c1"># ID ke karakter (input)</span>
-    <span class="n">tgt_idx2char</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">'dict'</span><span class="p">][</span><span class="s1">'tgt_idx2char'</span><span class="p">]</span>  <span class="c1"># ID ke karakter (output)</span>
-
-    <span class="c1"># Ambil sample pertama dari dataset validasi</span>
-    <span class="n">src_text</span><span class="p">,</span> <span class="n">tgt_text</span> <span class="o">=</span> <span class="n">valid_dataset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    
-    <span class="c1"># Konversi input ID ke teks</span>
-    <span class="n">src_text</span> <span class="o">=</span> <span class="n">sequence_to_text</span><span class="p">(</span><span class="n">src_text</span><span class="p">,</span> <span class="n">src_idx2char</span><span class="p">)</span>
-    <span class="n">src_text</span> <span class="o">=</span> <span class="s1">' '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">src_text</span><span class="p">)</span>  <span class="c1"># Gabungkan karakter menjadi string</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s1">'src_text: '</span> <span class="o">+</span> <span class="n">src_text</span><span class="p">)</span>
-
-    <span class="c1"># Konversi output ID ke teks</span>
-    <span class="n">tgt_text</span> <span class="o">=</span> <span class="n">sequence_to_text</span><span class="p">(</span><span class="n">tgt_text</span><span class="p">,</span> <span class="n">tgt_idx2char</span><span class="p">)</span>
-    <span class="n">tgt_text</span> <span class="o">=</span> <span class="s1">' '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tgt_text</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s1">'tgt_text: '</span> <span class="o">+</span> <span class="n">tgt_text</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</div>
-</div>
-</div>
-<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
-<div class="jp-Cell-inputWrapper" tabindex="0">
-<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
-</div>
-<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
-</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
 <h1 id="Melakukan-Pra-Pemrosesan-Data"><strong>Melakukan Pra-Pemrosesan Data</strong><a class="anchor-link" href="#Melakukan-Pra-Pemrosesan-Data">¶</a></h1>
 </div>
 </div>
@@ -9450,7 +9548,7 @@ Menyediakan konfigurasi fleksibel melalui argumen command line.</p>
 <span class="kn">import</span> <span class="nn">nltk</span>   <span class="c1"># Untuk tokenisasi bahasa Inggris</span>
 <span class="kn">from</span> <span class="nn">tqdm</span> <span class="kn">import</span> <span class="n">tqdm</span>  <span class="c1"># Untuk progress bar</span>
 <span class="kn">from</span> <span class="nn">config</span> <span class="kn">import</span> <span class="n">Config</span>
-<span class="kn">from</span> <span class="nn">utils</span> <span class="kn">import</span> <span class="n">normalizeString</span><span class="p">,</span> <span class="n">encode_text</span>  <span class="c1"># Fungsi untuk normalisasi dan encoding teks</span>
+<span class="kn">from</span> <span class="nn">utility</span> <span class="kn">import</span> <span class="n">normalizeString</span><span class="p">,</span> <span class="n">encode_text</span>  <span class="c1"># Fungsi untuk normalisasi dan encoding teks</span>
 
 <span class="c1"># **Fungsi untuk membangun kosakata**</span>
 <span class="k">def</span> <span class="nf">build_vocab</span><span class="p">(</span><span class="n">token</span><span class="p">,</span> <span class="n">word2idx</span><span class="p">,</span> <span class="n">idx2char</span><span class="p">):</span>
@@ -9547,6 +9645,9 @@ Menyediakan konfigurasi fleksibel melalui argumen command line.</p>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">in_data</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">Config</span><span class="o">.</span><span class="n">maxlen_in</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">out_data</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">Config</span><span class="o">.</span><span class="n">maxlen_out</span> <span class="ow">and</span> \
                 <span class="n">Config</span><span class="o">.</span><span class="n">unk_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">in_data</span> <span class="ow">and</span> <span class="n">Config</span><span class="o">.</span><span class="n">unk_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">out_data</span><span class="p">:</span>
             <span class="n">samples</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s1">'in'</span><span class="p">:</span> <span class="n">in_data</span><span class="p">,</span> <span class="s1">'out'</span><span class="p">:</span> <span class="n">out_data</span><span class="p">})</span>
+        <span class="c1"># if len(in_data) &lt;= Config.maxlen_in and len(out_data) &lt;= Config.maxlen_out:</span>
+        <span class="c1">#     samples.append({'in': in_data, 'out': out_data})</span>
+
     <span class="k">return</span> <span class="n">samples</span>
 
 <span class="c1"># **Bagian Utama**</span>
@@ -9600,6 +9701,156 @@ Menyediakan konfigurasi fleksibel melalui argumen command line.</p>
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h1 id="Melakukan-Genarate-Data"><strong>Melakukan Genarate Data</strong><a class="anchor-link" href="#Melakukan-Genarate-Data">¶</a></h1><p>Untuk menghasilkan dataset terstruktur dengan sequence input-output, namun tanpa padding. Padding dilakukan selanjutnya pada pra-pemrosesan data atau selama pelatihan.</p>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="sd">"""</span>
+<span class="sd">Menghasilkan dataset yang telah diproses untuk model Transformer.</span>
+<span class="sd">Melibatkan pembacaan data input-output, padding, dan pengelolaan dataset.</span>
+<span class="sd">"""</span>
+<span class="kn">import</span> <span class="nn">pickle</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">from</span> <span class="nn">torch.utils.data</span> <span class="kn">import</span> <span class="n">Dataset</span>
+<span class="kn">from</span> <span class="nn">torch.utils.data.dataloader</span> <span class="kn">import</span> <span class="n">default_collate</span>
+<span class="kn">from</span> <span class="nn">utility</span> <span class="kn">import</span> <span class="n">sequence_to_text</span>
+<span class="kn">from</span> <span class="nn">config</span> <span class="kn">import</span> <span class="n">Config</span>
+
+<span class="c1"># **Memuat data dari file yang disiapkan sebelumnya**</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">data_file</span><span class="p">,</span> <span class="s1">'rb'</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>  <span class="c1"># Data harus berisi split seperti 'train', 'valid', 'test'</span>
+
+
+<span class="k">def</span> <span class="nf">get_data</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Membaca file teks dan mengembalikan setiap baris sebagai elemen dalam list.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        filename: Lokasi file teks.</span>
+<span class="sd">    Returns:</span>
+<span class="sd">        List baris teks dari file.</span>
+<span class="sd">    """</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">'r'</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">file</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">[</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">data</span><span class="p">]</span>  <span class="c1"># Membersihkan spasi di awal/akhir baris</span>
+    <span class="k">return</span> <span class="n">data</span>
+
+
+<span class="k">def</span> <span class="nf">pad_collate</span><span class="p">(</span><span class="n">batch</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Melakukan padding pada batch data agar semua sequence memiliki panjang yang sama.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        batch: Daftar pasangan input-output sequence [(input, output)].</span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Batch dengan input dan output yang telah dipadding, diurutkan berdasarkan panjang input.</span>
+<span class="sd">    """</span>
+    <span class="c1"># Cari panjang maksimum input dan output dalam batch</span>
+    <span class="n">max_input_len</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">'-inf'</span><span class="p">)</span>
+    <span class="n">max_target_len</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">'-inf'</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">elem</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">:</span>
+        <span class="n">src</span><span class="p">,</span> <span class="n">tgt</span> <span class="o">=</span> <span class="n">elem</span>
+        <span class="n">max_input_len</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_input_len</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">src</span><span class="p">))</span>  <span class="c1"># Panjang maksimum input</span>
+        <span class="n">max_target_len</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_target_len</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">tgt</span><span class="p">))</span>  <span class="c1"># Panjang maksimum output</span>
+
+    <span class="c1"># Lakukan padding pada input dan output</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">elem</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">batch</span><span class="p">):</span>
+        <span class="n">src</span><span class="p">,</span> <span class="n">tgt</span> <span class="o">=</span> <span class="n">elem</span>
+        <span class="n">padded_input</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_input_len</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">src</span><span class="p">)),</span> <span class="s1">'constant'</span><span class="p">,</span> <span class="n">constant_values</span><span class="o">=</span><span class="n">Config</span><span class="o">.</span><span class="n">pad_id</span><span class="p">)</span>
+        <span class="n">padded_target</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span><span class="n">tgt</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_target_len</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">tgt</span><span class="p">)),</span> <span class="s1">'constant'</span><span class="p">,</span> <span class="n">constant_values</span><span class="o">=</span><span class="n">Config</span><span class="o">.</span><span class="n">IGNORE_ID</span><span class="p">)</span>
+        <span class="n">batch</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">padded_input</span><span class="p">,</span> <span class="n">padded_target</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">src</span><span class="p">))</span>  <span class="c1"># Tambahkan panjang input untuk sorting</span>
+
+    <span class="c1"># Urutkan batch berdasarkan panjang input (panjang ke pendek)</span>
+    <span class="n">batch</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># Kembalikan batch yang diproses</span>
+    <span class="k">return</span> <span class="n">default_collate</span><span class="p">(</span><span class="n">batch</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">TranslateDataset</span><span class="p">(</span><span class="n">Dataset</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Dataset PyTorch untuk data terjemahan.</span>
+<span class="sd">    """</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">split</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Inisialisasi dataset berdasarkan split data.</span>
+<span class="sd">        Args:</span>
+<span class="sd">            split: Split data yang akan digunakan ('train', 'valid', 'test').</span>
+<span class="sd">        """</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">samples</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="n">split</span><span class="p">]</span>  <span class="c1"># Pilih split dataset</span>
+
+    <span class="k">def</span> <span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Mengembalikan pasangan input-output sequence tanpa padding.</span>
+<span class="sd">        Args:</span>
+<span class="sd">            item: Indeks sample dalam dataset.</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            Tuple input-output sequence dalam bentuk array numpy.</span>
+<span class="sd">        """</span>
+        <span class="n">sample</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">samples</span><span class="p">[</span><span class="n">item</span><span class="p">]</span>
+        <span class="n">src_text</span> <span class="o">=</span> <span class="n">sample</span><span class="p">[</span><span class="s1">'in'</span><span class="p">]</span>  <span class="c1"># Input sequence</span>
+        <span class="n">tgt_text</span> <span class="o">=</span> <span class="n">sample</span><span class="p">[</span><span class="s1">'out'</span><span class="p">]</span>  <span class="c1"># Output sequence</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">src_text</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">tgt_text</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Mendapatkan jumlah sample dalam dataset.</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            Jumlah sample dalam dataset.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">samples</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Demonstrasi penggunaan dataset validasi dan kosakata.</span>
+<span class="sd">    """</span>
+    <span class="c1"># Muat dataset validasi</span>
+    <span class="n">valid_dataset</span> <span class="o">=</span> <span class="n">TranslateDataset</span><span class="p">(</span><span class="s1">'valid'</span><span class="p">)</span>
+
+    <span class="c1"># Muat kosakata</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">vocab_file</span><span class="p">,</span> <span class="s1">'rb'</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+
+    <span class="c1"># Peta ID ke karakter untuk input dan output</span>
+    <span class="n">src_idx2char</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">'dict'</span><span class="p">][</span><span class="s1">'src_idx2char'</span><span class="p">]</span>  <span class="c1"># ID ke karakter (input)</span>
+    <span class="n">tgt_idx2char</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">'dict'</span><span class="p">][</span><span class="s1">'tgt_idx2char'</span><span class="p">]</span>  <span class="c1"># ID ke karakter (output)</span>
+
+    <span class="c1"># Ambil sample pertama dari dataset validasi</span>
+    <span class="n">src_text</span><span class="p">,</span> <span class="n">tgt_text</span> <span class="o">=</span> <span class="n">valid_dataset</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    
+    <span class="c1"># Konversi input ID ke teks</span>
+    <span class="n">src_text</span> <span class="o">=</span> <span class="n">sequence_to_text</span><span class="p">(</span><span class="n">src_text</span><span class="p">,</span> <span class="n">src_idx2char</span><span class="p">)</span>
+    <span class="n">src_text</span> <span class="o">=</span> <span class="s1">' '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">src_text</span><span class="p">)</span>  <span class="c1"># Gabungkan karakter menjadi string</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">'src_text: '</span> <span class="o">+</span> <span class="n">src_text</span><span class="p">)</span>
+
+    <span class="c1"># Konversi output ID ke teks</span>
+    <span class="n">tgt_text</span> <span class="o">=</span> <span class="n">sequence_to_text</span><span class="p">(</span><span class="n">tgt_text</span><span class="p">,</span> <span class="n">tgt_idx2char</span><span class="p">)</span>
+    <span class="n">tgt_text</span> <span class="o">=</span> <span class="s1">' '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tgt_text</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">'tgt_text: '</span> <span class="o">+</span> <span class="n">tgt_text</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
 <h1 id="Bangun-Model-Transformer-dan-Lakukan-Training-Data"><strong>Bangun Model Transformer dan Lakukan Training Data</strong><a class="anchor-link" href="#Bangun-Model-Transformer-dan-Lakukan-Training-Data">¶</a></h1><p>Model Transformer dibangun berdasarkan Rumus dan Code di atas. Kemudian jalankan Training Code berikut:</p>
 </div>
 </div>
@@ -9618,163 +9869,238 @@ Menyediakan konfigurasi fleksibel melalui argumen command line.</p>
 <span class="sd">"""</span>
 
 <span class="c1"># **Import Library**</span>
-<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">argparse</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
 <span class="kn">import</span> <span class="nn">torch</span>
-<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
-<span class="kn">import</span> <span class="nn">torch.optim</span> <span class="k">as</span> <span class="nn">optim</span>
-<span class="kn">from</span> <span class="nn">torch.utils.data</span> <span class="kn">import</span> <span class="n">DataLoader</span>
-<span class="kn">from</span> <span class="nn">tqdm</span> <span class="kn">import</span> <span class="n">tqdm</span>
-<span class="kn">from</span> <span class="nn">config</span> <span class="kn">import</span> <span class="n">Config</span>
-<span class="kn">from</span> <span class="nn">utils</span> <span class="kn">import</span> <span class="n">AverageMeter</span><span class="p">,</span> <span class="n">clip_gradient</span><span class="p">,</span> <span class="n">save_checkpoint</span>
-<span class="kn">from</span> <span class="nn">data_gen</span> <span class="kn">import</span> <span class="n">TranslateDataset</span><span class="p">,</span> <span class="n">pad_collate</span>  <span class="c1"># Dataset dan fungsi collate untuk DataLoader</span>
-<span class="kn">from</span> <span class="nn">transformer</span> <span class="kn">import</span> <span class="n">Transformer</span>  <span class="c1"># Arsitektur model Transformer</span>
-<span class="kn">from</span> <span class="nn">loss</span> <span class="kn">import</span> <span class="n">cal_performance</span>  <span class="c1"># Fungsi untuk menghitung loss dan akurasi</span>
-<span class="kn">from</span> <span class="nn">optimizer</span> <span class="kn">import</span> <span class="n">TransformerOptimizer</span>  <span class="c1"># Optimizer dengan learning rate scheduling</span>
+<span class="kn">from</span> <span class="nn">torch.utils.tensorboard</span> <span class="kn">import</span> <span class="n">SummaryWriter</span>
+
+<span class="c1"># Import komponen-komponen yang diperlukan dari modul lain</span>
+<span class="kn">from</span> <span class="nn">transformer.decoder</span> <span class="kn">import</span> <span class="n">Decoder</span>  <span class="c1"># Decoder dari Transformer</span>
+<span class="kn">from</span> <span class="nn">transformer.encoder</span> <span class="kn">import</span> <span class="n">Encoder</span>  <span class="c1"># Encoder dari Transformer</span>
+<span class="kn">from</span> <span class="nn">transformer.loss</span> <span class="kn">import</span> <span class="n">cal_performance</span>  <span class="c1"># Menghitung loss dan akurasi</span>
+<span class="kn">from</span> <span class="nn">transformer.optimizer</span> <span class="kn">import</span> <span class="n">TransformerOptimizer</span>  <span class="c1"># Optimizer dengan warmup scheduling</span>
+<span class="kn">from</span> <span class="nn">transformer.transformer</span> <span class="kn">import</span> <span class="n">Transformer</span>  <span class="c1"># Model Transformer</span>
+
+<span class="kn">from</span> <span class="nn">config</span> <span class="kn">import</span> <span class="n">Config</span><span class="p">,</span> <span class="n">logger</span>  <span class="c1"># Konfigurasi model dan logger</span>
+<span class="kn">from</span> <span class="nn">data_gen</span> <span class="kn">import</span> <span class="n">TranslateDataset</span><span class="p">,</span> <span class="n">pad_collate</span>  <span class="c1"># Dataset dan fungsi collate untuk padding</span>
+<span class="kn">from</span> <span class="nn">utility</span> <span class="kn">import</span> <span class="n">save_checkpoint</span><span class="p">,</span> <span class="n">AverageMeter</span><span class="p">,</span> <span class="n">clip_gradient</span><span class="p">,</span> <span class="n">parse_args</span>  <span class="c1"># Utilitas tambahan</span>
+
+<span class="k">def</span> <span class="nf">train_net</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Melatih model Transformer.</span>
+<span class="sd">    """</span>
+    <span class="c1"># **Set Seed**: Untuk memastikan hasil eksperimen tetap konsisten.</span>
+    <span class="n">torch</span><span class="o">.</span><span class="n">manual_seed</span><span class="p">(</span><span class="mi">7</span><span class="p">)</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">7</span><span class="p">)</span>
+
+    <span class="c1"># **Load Checkpoint**: Mulai dari awal atau melanjutkan dari checkpoint yang sudah ada.</span>
+    <span class="n">checkpoint</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">checkpoint</span>
+    <span class="n">start_epoch</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">best_loss</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="s1">'inf'</span><span class="p">)</span>  <span class="c1"># Loss terbaik diinisialisasi ke nilai maksimum</span>
+    <span class="n">epochs_since_improvement</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Melacak jumlah epoch tanpa perbaikan</span>
+    <span class="n">writer</span> <span class="o">=</span> <span class="n">SummaryWriter</span><span class="p">()</span>  <span class="c1"># TensorBoard untuk visualisasi pelatihan</span>
+    
+
+    <span class="k">if</span> <span class="n">checkpoint</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># **Inisialisasi Model Baru**</span>
+        <span class="n">encoder</span> <span class="o">=</span> <span class="n">Encoder</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">n_src_vocab</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">n_layers_enc</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">n_head</span><span class="p">,</span>
+                          <span class="n">args</span><span class="o">.</span><span class="n">d_k</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">d_v</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">d_model</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">d_inner</span><span class="p">,</span>
+                          <span class="n">dropout</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">dropout</span><span class="p">,</span> <span class="n">pe_maxlen</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">pe_maxlen</span><span class="p">)</span>
+
+        <span class="n">decoder</span> <span class="o">=</span> <span class="n">Decoder</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">sos_id</span><span class="p">,</span> <span class="n">Config</span><span class="o">.</span><span class="n">eos_id</span><span class="p">,</span> <span class="n">Config</span><span class="o">.</span><span class="n">n_tgt_vocab</span><span class="p">,</span>
+                          <span class="n">args</span><span class="o">.</span><span class="n">d_word_vec</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">n_layers_dec</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">n_head</span><span class="p">,</span>
+                          <span class="n">args</span><span class="o">.</span><span class="n">d_k</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">d_v</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">d_model</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">d_inner</span><span class="p">,</span>
+                          <span class="n">dropout</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">dropout</span><span class="p">,</span>
+                          <span class="n">tgt_emb_prj_weight_sharing</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">tgt_emb_prj_weight_sharing</span><span class="p">,</span>
+                          <span class="n">pe_maxlen</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">pe_maxlen</span><span class="p">)</span>
+
+        <span class="n">model</span> <span class="o">=</span> <span class="n">Transformer</span><span class="p">(</span><span class="n">encoder</span><span class="p">,</span> <span class="n">decoder</span><span class="p">)</span>
+
+        <span class="c1"># **Inisialisasi Optimizer**: Adam optimizer dengan learning rate scheduling.</span>
+        <span class="n">optimizer</span> <span class="o">=</span> <span class="n">TransformerOptimizer</span><span class="p">(</span>
+            <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">betas</span><span class="o">=</span><span class="p">(</span><span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.98</span><span class="p">),</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-09</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># **Load Checkpoint**: Melanjutkan dari model yang sudah disimpan.</span>
+        <span class="n">checkpoint</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">checkpoint</span><span class="p">)</span>
+        <span class="n">start_epoch</span> <span class="o">=</span> <span class="n">checkpoint</span><span class="p">[</span><span class="s1">'epoch'</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">epochs_since_improvement</span> <span class="o">=</span> <span class="n">checkpoint</span><span class="p">[</span><span class="s1">'epochs_since_improvement'</span><span class="p">]</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">checkpoint</span><span class="p">[</span><span class="s1">'model'</span><span class="p">]</span>
+        <span class="n">optimizer</span> <span class="o">=</span> <span class="n">checkpoint</span><span class="p">[</span><span class="s1">'optimizer'</span><span class="p">]</span>
+
+    <span class="c1"># **Pindahkan Model ke GPU (jika tersedia)**</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="c1"># **Load Dataset**</span>
+    <span class="n">train_dataset</span> <span class="o">=</span> <span class="n">TranslateDataset</span><span class="p">(</span><span class="s1">'train'</span><span class="p">)</span>
+    <span class="n">train_loader</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">DataLoader</span><span class="p">(</span><span class="n">train_dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">collate_fn</span><span class="o">=</span><span class="n">pad_collate</span><span class="p">,</span>
+                                               <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">num_workers</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">num_workers</span><span class="p">)</span>  <span class="c1"># Tambahkan num_workers</span>
+    <span class="n">valid_dataset</span> <span class="o">=</span> <span class="n">TranslateDataset</span><span class="p">(</span><span class="s1">'valid'</span><span class="p">)</span>
+    <span class="n">valid_loader</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">DataLoader</span><span class="p">(</span><span class="n">valid_dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">collate_fn</span><span class="o">=</span><span class="n">pad_collate</span><span class="p">,</span>
+                                               <span class="n">shuffle</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">num_workers</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">num_workers</span><span class="p">)</span>
+
+    <span class="c1"># **Loop Epoch**</span>
+    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start_epoch</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">epochs</span><span class="p">):</span>
+        <span class="c1"># **Training**: Melatih model untuk satu epoch.</span>
+        <span class="n">train_loss</span> <span class="o">=</span> <span class="n">train</span><span class="p">(</span><span class="n">train_loader</span><span class="o">=</span><span class="n">train_loader</span><span class="p">,</span>
+                           <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+                           <span class="n">optimizer</span><span class="o">=</span><span class="n">optimizer</span><span class="p">,</span>
+                           <span class="n">epoch</span><span class="o">=</span><span class="n">epoch</span><span class="p">,</span>
+                           <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">,</span>
+                           <span class="n">writer</span><span class="o">=</span><span class="n">writer</span><span class="p">)</span>
+
+        <span class="c1"># Catat loss pelatihan ke TensorBoard.</span>
+        <span class="n">writer</span><span class="o">.</span><span class="n">add_scalar</span><span class="p">(</span><span class="s1">'epoch/train_loss'</span><span class="p">,</span> <span class="n">train_loss</span><span class="p">,</span> <span class="n">epoch</span><span class="p">)</span>
+        <span class="n">writer</span><span class="o">.</span><span class="n">add_scalar</span><span class="p">(</span><span class="s1">'epoch/learning_rate'</span><span class="p">,</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">lr</span><span class="p">,</span> <span class="n">epoch</span><span class="p">)</span>
+
+        <span class="c1"># Tampilkan informasi learning rate dan step optimizer.</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">'</span><span class="se">\n</span><span class="s1">Learning rate: </span><span class="si">{}</span><span class="s1">'</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">optimizer</span><span class="o">.</span><span class="n">lr</span><span class="p">))</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">'Step num: </span><span class="si">{}</span><span class="se">\n</span><span class="s1">'</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">optimizer</span><span class="o">.</span><span class="n">step_num</span><span class="p">))</span>
+
+        <span class="c1"># **Validation**: Validasi model untuk menghitung loss validasi.</span>
+        <span class="n">valid_loss</span> <span class="o">=</span> <span class="n">valid</span><span class="p">(</span><span class="n">valid_loader</span><span class="o">=</span><span class="n">valid_loader</span><span class="p">,</span>
+                           <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+                           <span class="n">logger</span><span class="o">=</span><span class="n">logger</span><span class="p">)</span>
+        <span class="n">writer</span><span class="o">.</span><span class="n">add_scalar</span><span class="p">(</span><span class="s1">'epoch/valid_loss'</span><span class="p">,</span> <span class="n">valid_loss</span><span class="p">,</span> <span class="n">epoch</span><span class="p">)</span>
+
+        <span class="c1"># **Periksa Perbaikan Loss**</span>
+        <span class="n">is_best</span> <span class="o">=</span> <span class="n">valid_loss</span> <span class="o">&lt;</span> <span class="n">best_loss</span>
+        <span class="n">best_loss</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">valid_loss</span><span class="p">,</span> <span class="n">best_loss</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_best</span><span class="p">:</span>
+            <span class="n">epochs_since_improvement</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">Epochs since last improvement: </span><span class="si">%d</span><span class="se">\n</span><span class="s2">"</span> <span class="o">%</span> <span class="p">(</span><span class="n">epochs_since_improvement</span><span class="p">,))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">epochs_since_improvement</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c1"># **Simpan Checkpoint**</span>
+        <span class="n">save_checkpoint</span><span class="p">(</span><span class="n">epoch</span><span class="p">,</span> <span class="n">epochs_since_improvement</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">,</span> <span class="n">best_loss</span><span class="p">,</span> <span class="n">is_best</span><span class="p">)</span>
 
 
-<span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="n">train_loader</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">criterion</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">,</span> <span class="n">epoch</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">train</span><span class="p">(</span><span class="n">train_loader</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">,</span> <span class="n">epoch</span><span class="p">,</span> <span class="n">logger</span><span class="p">,</span> <span class="n">writer</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Melatih model untuk satu epoch.</span>
-<span class="sd">    Args:</span>
-<span class="sd">        train_loader: DataLoader untuk dataset pelatihan.</span>
-<span class="sd">        model: Model Transformer yang akan dilatih.</span>
-<span class="sd">        criterion: Kriteria loss yang digunakan.</span>
-<span class="sd">        optimizer: Optimizer untuk memperbarui parameter model.</span>
-<span class="sd">        epoch: Epoch saat ini.</span>
 <span class="sd">    """</span>
-    <span class="c1"># **Set model ke mode pelatihan**</span>
-    <span class="n">model</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>  <span class="c1"># Set model ke mode pelatihan (dropout aktif).</span>
 
-    <span class="c1"># **Meter untuk melacak loss dan akurasi**</span>
+    <span class="c1"># Inisialisasi meter untuk loss dan waktu batch.</span>
     <span class="n">losses</span> <span class="o">=</span> <span class="n">AverageMeter</span><span class="p">()</span>
-    <span class="n">top1</span> <span class="o">=</span> <span class="n">AverageMeter</span><span class="p">()</span>
+    <span class="n">times</span> <span class="o">=</span> <span class="n">AverageMeter</span><span class="p">()</span>
 
-    <span class="c1"># **Loop melalui batch dalam DataLoader**</span>
-    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">padded_input</span><span class="p">,</span> <span class="n">padded_target</span><span class="p">,</span> <span class="n">input_lengths</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">train_loader</span><span class="p">):</span>
-        <span class="c1"># Pindahkan data ke perangkat (GPU/CPU)</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+    <span class="c1"># **Loop Batch Pelatihan**</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">train_loader</span><span class="p">):</span>
+        <span class="n">padded_input</span><span class="p">,</span> <span class="n">padded_target</span><span class="p">,</span> <span class="n">input_lengths</span> <span class="o">=</span> <span class="n">data</span>
+
+        <span class="c1"># Pindahkan data ke perangkat (GPU/CPU).</span>
         <span class="n">padded_input</span> <span class="o">=</span> <span class="n">padded_input</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
         <span class="n">padded_target</span> <span class="o">=</span> <span class="n">padded_target</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">input_lengths</span> <span class="o">=</span> <span class="n">input_lengths</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
 
-        <span class="c1"># Forward pass: Dapatkan prediksi dari model</span>
+        <span class="c1"># **Forward Propagation**</span>
         <span class="n">pred</span><span class="p">,</span> <span class="n">gold</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">padded_input</span><span class="p">,</span> <span class="n">input_lengths</span><span class="p">,</span> <span class="n">padded_target</span><span class="p">)</span>
-
-        <span class="c1"># Hitung loss dan jumlah prediksi benar</span>
         <span class="n">loss</span><span class="p">,</span> <span class="n">n_correct</span> <span class="o">=</span> <span class="n">cal_performance</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">gold</span><span class="p">,</span> <span class="n">smoothing</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">label_smoothing</span><span class="p">)</span>
-        <span class="n">acc</span> <span class="o">=</span> <span class="p">(</span><span class="n">n_correct</span> <span class="o">/</span> <span class="n">gold</span><span class="o">.</span><span class="n">ne</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">IGNORE_ID</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">())</span> <span class="o">*</span> <span class="mi">100</span>
 
-        <span class="c1"># Backward pass: Hitung gradien</span>
-        <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
-        <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+        <span class="c1"># **Backward Propagation**</span>
+        <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>  <span class="c1"># Reset gradien.</span>
+        <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>  <span class="c1"># Hitung gradien loss.</span>
 
-        <span class="c1"># Terapkan gradient clipping untuk mencegah exploding gradients</span>
-        <span class="n">clip_gradient</span><span class="p">(</span><span class="n">optimizer</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">grad_clip</span><span class="p">)</span>
+        <span class="c1"># **Gradient Clipping**: Memotong gradien agar tidak terlalu besar.</span>
+        <span class="n">clip_gradient</span><span class="p">(</span><span class="n">optimizer</span><span class="o">.</span><span class="n">optimizer</span><span class="p">,</span> <span class="n">Config</span><span class="o">.</span><span class="n">grad_clip</span><span class="p">)</span>
 
-        <span class="c1"># Update parameter model menggunakan optimizer</span>
+        <span class="c1"># **Update Parameter**</span>
         <span class="n">optimizer</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
 
-        <span class="c1"># Perbarui statistik</span>
-        <span class="n">losses</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="n">gold</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
-        <span class="n">top1</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">acc</span><span class="p">,</span> <span class="n">gold</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+        <span class="c1"># **Perbarui Statistik**</span>
+        <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
 
-        <span class="c1"># **Log setiap beberapa batch**</span>
+        <span class="n">losses</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
+        <span class="n">times</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">elapsed</span><span class="p">)</span>
+
+        <span class="c1"># **Log Informasi Batch**</span>
         <span class="k">if</span> <span class="n">i</span> <span class="o">%</span> <span class="n">Config</span><span class="o">.</span><span class="n">print_freq</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Epoch: [</span><span class="si">{</span><span class="n">epoch</span><span class="si">}</span><span class="s1">][</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s1">/</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">train_loader</span><span class="p">)</span><span class="si">}</span><span class="s1">]</span><span class="se">\t</span><span class="s1">'</span>
-                  <span class="sa">f</span><span class="s1">'Loss </span><span class="si">{</span><span class="n">losses</span><span class="o">.</span><span class="n">val</span><span class="si">:</span><span class="s1">.4f</span><span class="si">}</span><span class="s1"> (</span><span class="si">{</span><span class="n">losses</span><span class="o">.</span><span class="n">avg</span><span class="si">:</span><span class="s1">.4f</span><span class="si">}</span><span class="s1">)</span><span class="se">\t</span><span class="s1">'</span>
-                  <span class="sa">f</span><span class="s1">'Acc </span><span class="si">{</span><span class="n">top1</span><span class="o">.</span><span class="n">val</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1"> (</span><span class="si">{</span><span class="n">top1</span><span class="o">.</span><span class="n">avg</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">)'</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">'Epoch: [</span><span class="si">{0}</span><span class="s1">][</span><span class="si">{1}</span><span class="s1">/</span><span class="si">{2}</span><span class="s1">]</span><span class="se">\t</span><span class="s1">'</span>
+                        <span class="s1">'Batch time </span><span class="si">{time.val:.5f}</span><span class="s1"> (</span><span class="si">{time.avg:.5f}</span><span class="s1">)</span><span class="se">\t</span><span class="s1">'</span>
+                        <span class="s1">'Loss </span><span class="si">{loss.val:.5f}</span><span class="s1"> (</span><span class="si">{loss.avg:.5f}</span><span class="s1">)'</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">epoch</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">train_loader</span><span class="p">),</span> <span class="n">time</span><span class="o">=</span><span class="n">times</span><span class="p">,</span>
+                                                                      <span class="n">loss</span><span class="o">=</span><span class="n">losses</span><span class="p">))</span>
+            <span class="n">writer</span><span class="o">.</span><span class="n">add_scalar</span><span class="p">(</span><span class="s1">'step_num/train_loss'</span><span class="p">,</span> <span class="n">losses</span><span class="o">.</span><span class="n">avg</span><span class="p">,</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">step_num</span><span class="p">)</span>
+            <span class="n">writer</span><span class="o">.</span><span class="n">add_scalar</span><span class="p">(</span><span class="s1">'step_num/learning_rate'</span><span class="p">,</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">lr</span><span class="p">,</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">step_num</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">losses</span><span class="o">.</span><span class="n">avg</span>
 
 
-<span class="k">def</span> <span class="nf">validate</span><span class="p">(</span><span class="n">val_loader</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">criterion</span><span class="p">):</span>
+<span class="k">def</span> <span class="nf">valid</span><span class="p">(</span><span class="n">valid_loader</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">logger</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Melakukan validasi model.</span>
-<span class="sd">    Args:</span>
-<span class="sd">        val_loader: DataLoader untuk dataset validasi.</span>
-<span class="sd">        model: Model Transformer yang akan divalidasi.</span>
-<span class="sd">        criterion: Kriteria loss yang digunakan.</span>
-<span class="sd">    Returns:</span>
-<span class="sd">        average_loss: Rata-rata loss selama validasi.</span>
-<span class="sd">        top1.avg: Rata-rata akurasi selama validasi.</span>
+<span class="sd">    Validasi model.</span>
 <span class="sd">    """</span>
-    <span class="c1"># **Set model ke mode evaluasi**</span>
-    <span class="n">model</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>  <span class="c1"># Set model ke mode evaluasi (dropout nonaktif).</span>
 
-    <span class="c1"># **Meter untuk melacak loss dan akurasi**</span>
     <span class="n">losses</span> <span class="o">=</span> <span class="n">AverageMeter</span><span class="p">()</span>
-    <span class="n">top1</span> <span class="o">=</span> <span class="n">AverageMeter</span><span class="p">()</span>
 
-    <span class="c1"># **Nonaktifkan perhitungan gradien selama validasi**</span>
-    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-        <span class="k">for</span> <span class="n">padded_input</span><span class="p">,</span> <span class="n">padded_target</span><span class="p">,</span> <span class="n">input_lengths</span> <span class="ow">in</span> <span class="n">val_loader</span><span class="p">:</span>
-            <span class="c1"># Pindahkan data ke perangkat (GPU/CPU)</span>
-            <span class="n">padded_input</span> <span class="o">=</span> <span class="n">padded_input</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-            <span class="n">padded_target</span> <span class="o">=</span> <span class="n">padded_target</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+    <span class="c1"># **Loop Batch Validasi**</span>
+    <span class="k">for</span> <span class="n">data</span> <span class="ow">in</span> <span class="n">valid_loader</span><span class="p">:</span>
+        <span class="n">padded_input</span><span class="p">,</span> <span class="n">padded_target</span><span class="p">,</span> <span class="n">input_lengths</span> <span class="o">=</span> <span class="n">data</span>
 
-            <span class="c1"># Forward pass: Dapatkan prediksi dari model</span>
+        <span class="c1"># Pindahkan data ke perangkat (GPU/CPU).</span>
+        <span class="n">padded_input</span> <span class="o">=</span> <span class="n">padded_input</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">padded_target</span> <span class="o">=</span> <span class="n">padded_target</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">input_lengths</span> <span class="o">=</span> <span class="n">input_lengths</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="c1"># **Forward Propagation**</span>
             <span class="n">pred</span><span class="p">,</span> <span class="n">gold</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="n">padded_input</span><span class="p">,</span> <span class="n">input_lengths</span><span class="p">,</span> <span class="n">padded_target</span><span class="p">)</span>
-
-            <span class="c1"># Hitung loss dan jumlah prediksi benar</span>
             <span class="n">loss</span><span class="p">,</span> <span class="n">n_correct</span> <span class="o">=</span> <span class="n">cal_performance</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">gold</span><span class="p">,</span> <span class="n">smoothing</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">label_smoothing</span><span class="p">)</span>
-            <span class="n">acc</span> <span class="o">=</span> <span class="p">(</span><span class="n">n_correct</span> <span class="o">/</span> <span class="n">gold</span><span class="o">.</span><span class="n">ne</span><span class="p">(</span><span class="n">Config</span><span class="o">.</span><span class="n">IGNORE_ID</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">())</span> <span class="o">*</span> <span class="mi">100</span>
 
-            <span class="c1"># Perbarui statistik</span>
-            <span class="n">losses</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="n">gold</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
-            <span class="n">top1</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">acc</span><span class="p">,</span> <span class="n">gold</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+        <span class="c1"># **Perbarui Statistik**</span>
+        <span class="n">losses</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
 
-    <span class="c1"># **Log hasil validasi**</span>
-    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Validation</span><span class="se">\t</span><span class="s1"> Loss </span><span class="si">{</span><span class="n">losses</span><span class="o">.</span><span class="n">avg</span><span class="si">:</span><span class="s1">.4f</span><span class="si">}</span><span class="se">\t</span><span class="s1"> Acc </span><span class="si">{</span><span class="n">top1</span><span class="o">.</span><span class="n">avg</span><span class="si">:</span><span class="s1">.3f</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">losses</span><span class="o">.</span><span class="n">avg</span><span class="p">,</span> <span class="n">top1</span><span class="o">.</span><span class="n">avg</span>
+    <span class="c1"># **Log Informasi Validasi**</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s1">'</span><span class="se">\n</span><span class="s1">Validation Loss </span><span class="si">{loss.val:.5f}</span><span class="s1"> (</span><span class="si">{loss.avg:.5f}</span><span class="s1">)</span><span class="se">\n</span><span class="s1">'</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">loss</span><span class="o">=</span><span class="n">losses</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">losses</span><span class="o">.</span><span class="n">avg</span>
+
+
+<span class="k">def</span> <span class="nf">parse_args</span><span class="p">():</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="s2">"Training Transformer Model"</span><span class="p">)</span>
+
+    <span class="c1"># General settings</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--device'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s1">'cuda'</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Device untuk pelatihan ('cuda' atau 'cpu')."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--num_workers'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Jumlah worker untuk DataLoader (default: 4)."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--checkpoint'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Path ke checkpoint untuk melanjutkan pelatihan."</span><span class="p">)</span>
+
+    <span class="c1"># Training parameters</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--batch-size'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Ukuran batch untuk pelatihan."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--epochs'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Jumlah epoch pelatihan."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--learning-rate'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.001</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Learning rate awal untuk optimizer."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--label-smoothing'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Nilai label smoothing."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--warmup_steps'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">4000</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Jumlah langkah warmup untuk learning rate scheduler."</span><span class="p">)</span>
+
+    <span class="c1"># Model parameters</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--n_layers_enc'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Jumlah lapisan encoder."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--n_layers_dec'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Jumlah lapisan decoder."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--n_head'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Jumlah kepala pada multi-head attention."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--d_model'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Dimensi model."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--d_k'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Dimensi key dalam multi-head attention."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--d_v'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Dimensi value dalam multi-head attention."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--d_inner'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Dimensi inner layer dalam feed-forward network."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--dropout'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Dropout rate untuk regularisasi."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--pe_maxlen'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Panjang maksimum positional encoding."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--d_word_vec'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Dimensi vektor embedding untuk kata."</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'--tgt_emb_prj_weight_sharing'</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s2">"Apakah embedding target berbagi bobot dengan proyeksi decoder."</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
 
 
 <span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
 <span class="w">    </span><span class="sd">"""</span>
-<span class="sd">    Fungsi utama untuk melatih model Transformer.</span>
+<span class="sd">    Fungsi utama untuk memulai pelatihan.</span>
 <span class="sd">    """</span>
-    <span class="c1"># **Parse argumen dari command line**</span>
     <span class="k">global</span> <span class="n">args</span>
-    <span class="n">args</span> <span class="o">=</span> <span class="n">Config</span>  <span class="c1"># Menggunakan konfigurasi dari config.py</span>
-
-    <span class="c1"># **Muat dataset pelatihan dan validasi**</span>
-    <span class="n">train_dataset</span> <span class="o">=</span> <span class="n">TranslateDataset</span><span class="p">(</span><span class="s1">'train'</span><span class="p">)</span>
-    <span class="n">train_loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">train_dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">collate_fn</span><span class="o">=</span><span class="n">pad_collate</span><span class="p">,</span>
-                              <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">num_workers</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">num_workers</span><span class="p">)</span>
-
-    <span class="n">val_dataset</span> <span class="o">=</span> <span class="n">TranslateDataset</span><span class="p">(</span><span class="s1">'valid'</span><span class="p">)</span>
-    <span class="n">val_loader</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">val_dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">collate_fn</span><span class="o">=</span><span class="n">pad_collate</span><span class="p">,</span>
-                            <span class="n">shuffle</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">num_workers</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">num_workers</span><span class="p">)</span>
-
-    <span class="c1"># **Inisialisasi model**</span>
-    <span class="n">model</span> <span class="o">=</span> <span class="n">Transformer</span><span class="p">()</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-
-    <span class="c1"># **Definisikan loss function**</span>
-    <span class="n">criterion</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">CrossEntropyLoss</span><span class="p">(</span><span class="n">ignore_index</span><span class="o">=</span><span class="n">Config</span><span class="o">.</span><span class="n">IGNORE_ID</span><span class="p">)</span>
-
-    <span class="c1"># **Definisikan optimizer**</span>
-    <span class="n">base_optimizer</span> <span class="o">=</span> <span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">k</span><span class="p">)</span>
-    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">TransformerOptimizer</span><span class="p">(</span><span class="n">base_optimizer</span><span class="p">,</span> <span class="n">warmup_steps</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">warmup_steps</span><span class="p">)</span>
-
-    <span class="c1"># **Variabel untuk melacak performa terbaik**</span>
-    <span class="n">best_acc</span> <span class="o">=</span> <span class="mf">0.0</span>
-    <span class="n">epochs_since_improvement</span> <span class="o">=</span> <span class="mi">0</span>
-
-    <span class="c1"># **Loop melalui setiap epoch**</span>
-    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">epochs</span><span class="p">):</span>
-        <span class="c1"># Latih model</span>
-        <span class="n">train</span><span class="p">(</span><span class="n">train_loader</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">criterion</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">,</span> <span class="n">epoch</span><span class="p">)</span>
-
-        <span class="c1"># Validasi model</span>
-        <span class="n">val_loss</span><span class="p">,</span> <span class="n">val_acc</span> <span class="o">=</span> <span class="n">validate</span><span class="p">(</span><span class="n">val_loader</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">criterion</span><span class="p">)</span>
-
-        <span class="c1"># Cek perbaikan akurasi</span>
-        <span class="n">is_best</span> <span class="o">=</span> <span class="n">val_acc</span> <span class="o">&gt;</span> <span class="n">best_acc</span>
-        <span class="n">best_acc</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">val_acc</span><span class="p">,</span> <span class="n">best_acc</span><span class="p">)</span>
-
-        <span class="c1"># Simpan checkpoint</span>
-        <span class="n">save_checkpoint</span><span class="p">(</span><span class="n">epoch</span><span class="p">,</span> <span class="n">epochs_since_improvement</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">,</span> <span class="n">val_loss</span><span class="p">,</span> <span class="n">is_best</span><span class="p">)</span>
-
-        <span class="c1"># Hitung epoch tanpa perbaikan</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">is_best</span><span class="p">:</span>
-            <span class="n">epochs_since_improvement</span> <span class="o">+=</span> <span class="mi">1</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">epochs_since_improvement</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parse_args</span><span class="p">()</span>  <span class="c1"># Parsing argumen dari command line</span>
+    <span class="n">args</span><span class="o">.</span><span class="n">num_workers</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">args</span><span class="p">,</span> <span class="s1">'num_workers'</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+    
+    <span class="n">train_net</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
 
 
 <span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s1">'__main__'</span><span class="p">:</span>
@@ -9966,6 +10292,182 @@ $$</li>
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">metric</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">score</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<h1 id="Evaluasi-dengan-Best-Checkpoint.tar"><strong>Evaluasi dengan Best-Checkpoint.tar</strong><a class="anchor-link" href="#Evaluasi-dengan-Best-Checkpoint.tar">¶</a></h1>
+</div>
+</div>
+</div>
+</div><div class="jp-Cell jp-CodeCell jp-Notebook-cell jp-mod-noOutputs">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea">
+<div class="jp-InputPrompt jp-InputArea-prompt">In [ ]:</div>
+<div class="jp-CodeMirrorEditor jp-Editor jp-InputArea-editor" data-type="inline">
+<div class="cm-editor cm-s-jupyter">
+<div class="highlight hl-ipython3"><pre><span></span><span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">from</span> <span class="nn">process_data</span> <span class="kn">import</span> <span class="n">decode_sequence</span><span class="p">,</span> <span class="n">get_data</span>  <span class="c1"># Memanggil fungsi dari process_data.py</span>
+<span class="kn">from</span> <span class="nn">nltk.translate.bleu_score</span> <span class="kn">import</span> <span class="n">sentence_bleu</span><span class="p">,</span> <span class="n">SmoothingFunction</span>
+<span class="kn">from</span> <span class="nn">rouge_score</span> <span class="kn">import</span> <span class="n">rouge_scorer</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">pickle</span>
+<span class="kn">from</span> <span class="nn">transformer.transformer</span> <span class="kn">import</span> <span class="n">Transformer</span>
+<span class="kn">from</span> <span class="nn">transformer.encoder</span> <span class="kn">import</span> <span class="n">Encoder</span>
+<span class="kn">from</span> <span class="nn">transformer.decoder</span> <span class="kn">import</span> <span class="n">Decoder</span>
+
+<span class="c1"># Fungsi untuk memuat model dari checkpoint</span>
+<span class="k">def</span> <span class="nf">load_model</span><span class="p">(</span><span class="n">checkpoint_path</span><span class="p">,</span> <span class="n">model</span><span class="p">):</span>
+    <span class="n">checkpoint</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">checkpoint_path</span><span class="p">,</span> <span class="n">map_location</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s1">'cpu'</span><span class="p">))</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">load_state_dict</span><span class="p">(</span><span class="n">checkpoint</span><span class="p">[</span><span class="s1">'model_state_dict'</span><span class="p">])</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>  <span class="c1"># Set model ke evaluasi</span>
+    <span class="k">return</span> <span class="n">model</span>
+
+<span class="c1"># Fungsi untuk menghasilkan prediksi</span>
+<span class="k">def</span> <span class="nf">generate_predictions</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">test_data</span><span class="p">,</span> <span class="n">idx2char</span><span class="p">):</span>
+    <span class="n">predictions</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">references</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>  <span class="c1"># Set model ke mode evaluasi</span>
+
+    <span class="k">for</span> <span class="n">sample</span> <span class="ow">in</span> <span class="n">test_data</span><span class="p">:</span>
+        <span class="n">src</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">sample</span><span class="p">[</span><span class="s1">'in'</span><span class="p">])</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># Input sequence, tambah batch dimension</span>
+        <span class="n">tgt</span> <span class="o">=</span> <span class="n">sample</span><span class="p">[</span><span class="s1">'out'</span><span class="p">]</span>  <span class="c1"># Target sequence</span>
+
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="n">input_length</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">src</span><span class="p">[</span><span class="mi">0</span><span class="p">])])</span>  <span class="c1"># Panjang input</span>
+            <span class="n">nbest_hyps</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">recognize</span><span class="p">(</span><span class="n">src</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">input_length</span><span class="p">,</span> <span class="n">idx2char</span><span class="p">)</span>
+            <span class="n">pred_text</span> <span class="o">=</span> <span class="s1">''</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">idx2char</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">nbest_hyps</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">'yseq'</span><span class="p">][</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]])</span>  <span class="c1"># Decode tanpa &lt;sos&gt; dan &lt;eos&gt;</span>
+            <span class="n">ref_text</span> <span class="o">=</span> <span class="n">decode_sequence</span><span class="p">(</span><span class="n">tgt</span><span class="p">,</span> <span class="n">idx2char</span><span class="p">)</span>  <span class="c1"># Decode target sequence</span>
+
+        <span class="n">predictions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pred_text</span><span class="p">)</span>
+        <span class="n">references</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ref_text</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">predictions</span><span class="p">,</span> <span class="n">references</span>
+
+<span class="c1"># Fungsi untuk menghitung metrik evaluasi</span>
+<span class="k">def</span> <span class="nf">calculate_metrics</span><span class="p">(</span><span class="n">predictions</span><span class="p">,</span> <span class="n">references</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Menghitung metrik evaluasi untuk model sequence-to-sequence.</span>
+<span class="sd">    """</span>
+    <span class="c1"># BLEU Metrics</span>
+    <span class="n">smoothing_function</span> <span class="o">=</span> <span class="n">SmoothingFunction</span><span class="p">()</span><span class="o">.</span><span class="n">method1</span>
+    <span class="n">bleu_scores</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">sentence_bleu</span><span class="p">([</span><span class="n">ref</span><span class="o">.</span><span class="n">split</span><span class="p">()],</span> <span class="n">pred</span><span class="o">.</span><span class="n">split</span><span class="p">(),</span> <span class="n">smoothing_function</span><span class="o">=</span><span class="n">smoothing_function</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">pred</span><span class="p">,</span> <span class="n">ref</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">predictions</span><span class="p">,</span> <span class="n">references</span><span class="p">)</span>
+    <span class="p">]</span>
+    <span class="n">avg_bleu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">bleu_scores</span><span class="p">)</span>
+
+    <span class="c1"># ROUGE Metrics</span>
+    <span class="n">rouge_scorer_instance</span> <span class="o">=</span> <span class="n">rouge_scorer</span><span class="o">.</span><span class="n">RougeScorer</span><span class="p">([</span><span class="s1">'rouge-1'</span><span class="p">,</span> <span class="s1">'rouge-2'</span><span class="p">,</span> <span class="s1">'rouge-l'</span><span class="p">],</span> <span class="n">use_stemmer</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">rouge_scores</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'rouge-1'</span><span class="p">:</span> <span class="p">[],</span> <span class="s1">'rouge-2'</span><span class="p">:</span> <span class="p">[],</span> <span class="s1">'rouge-l'</span><span class="p">:</span> <span class="p">[]}</span>
+    <span class="k">for</span> <span class="n">pred</span><span class="p">,</span> <span class="n">ref</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">predictions</span><span class="p">,</span> <span class="n">references</span><span class="p">):</span>
+        <span class="n">scores</span> <span class="o">=</span> <span class="n">rouge_scorer_instance</span><span class="o">.</span><span class="n">score</span><span class="p">(</span><span class="n">ref</span><span class="p">,</span> <span class="n">pred</span><span class="p">)</span>
+        <span class="n">rouge_scores</span><span class="p">[</span><span class="s1">'rouge-1'</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">scores</span><span class="p">[</span><span class="s1">'rouge-1'</span><span class="p">]</span><span class="o">.</span><span class="n">fmeasure</span><span class="p">)</span>
+        <span class="n">rouge_scores</span><span class="p">[</span><span class="s1">'rouge-2'</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">scores</span><span class="p">[</span><span class="s1">'rouge-2'</span><span class="p">]</span><span class="o">.</span><span class="n">fmeasure</span><span class="p">)</span>
+        <span class="n">rouge_scores</span><span class="p">[</span><span class="s1">'rouge-l'</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">scores</span><span class="p">[</span><span class="s1">'rouge-l'</span><span class="p">]</span><span class="o">.</span><span class="n">fmeasure</span><span class="p">)</span>
+    <span class="n">avg_rouge_1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">rouge_scores</span><span class="p">[</span><span class="s1">'rouge-1'</span><span class="p">])</span>
+    <span class="n">avg_rouge_2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">rouge_scores</span><span class="p">[</span><span class="s1">'rouge-2'</span><span class="p">])</span>
+    <span class="n">avg_rouge_l</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">rouge_scores</span><span class="p">[</span><span class="s1">'rouge-l'</span><span class="p">])</span>
+
+    <span class="c1"># Accuracy</span>
+    <span class="n">correct</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="mi">1</span> <span class="k">for</span> <span class="n">pred</span><span class="p">,</span> <span class="n">ref</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">predictions</span><span class="p">,</span> <span class="n">references</span><span class="p">)</span> <span class="k">if</span> <span class="n">pred</span> <span class="o">==</span> <span class="n">ref</span><span class="p">)</span>
+    <span class="n">accuracy</span> <span class="o">=</span> <span class="n">correct</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">references</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s1">'BLEU'</span><span class="p">:</span> <span class="n">avg_bleu</span><span class="p">,</span>
+        <span class="s1">'ROUGE-1'</span><span class="p">:</span> <span class="n">avg_rouge_1</span><span class="p">,</span>
+        <span class="s1">'ROUGE-2'</span><span class="p">:</span> <span class="n">avg_rouge_2</span><span class="p">,</span>
+        <span class="s1">'ROUGE-L'</span><span class="p">:</span> <span class="n">avg_rouge_l</span><span class="p">,</span>
+        <span class="s1">'Accuracy'</span><span class="p">:</span> <span class="n">accuracy</span>
+    <span class="p">}</span>
+
+<span class="c1"># Main Script</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
+    <span class="c1"># 1. Muat kosakata</span>
+    <span class="n">vocab_path</span> <span class="o">=</span> <span class="s1">'path/to/vocab_file.pkl'</span>  <span class="c1"># Path ke file kosakata</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">vocab_path</span><span class="p">,</span> <span class="s1">'rb'</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="n">vocab_data</span> <span class="o">=</span> <span class="n">pickle</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+        <span class="n">src_idx2char</span> <span class="o">=</span> <span class="n">vocab_data</span><span class="p">[</span><span class="s1">'dict'</span><span class="p">][</span><span class="s1">'src_idx2char'</span><span class="p">]</span>
+        <span class="n">tgt_idx2char</span> <span class="o">=</span> <span class="n">vocab_data</span><span class="p">[</span><span class="s1">'dict'</span><span class="p">][</span><span class="s1">'tgt_idx2char'</span><span class="p">]</span>
+
+    <span class="c1"># 2. Muat model</span>
+    <span class="n">encoder</span> <span class="o">=</span> <span class="n">Encoder</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>  <span class="c1"># Ganti dengan parameter yang sesuai untuk Encoder</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    encoder = Encoder(</span>
+<span class="sd">    n_src_vocab=10000,  # Sesuaikan dengan ukuran kosakata sumber</span>
+<span class="sd">    n_layers=6,         # Jumlah lapisan encoder</span>
+<span class="sd">    n_head=8,           # Jumlah kepala attention</span>
+<span class="sd">    d_k=64,             # Dimensi key</span>
+<span class="sd">    d_v=64,             # Dimensi value</span>
+<span class="sd">    d_model=512,        # Dimensi embedding</span>
+<span class="sd">    d_inner=2048,       # Dimensi feed-forward network</span>
+<span class="sd">    dropout=0.1,        # Dropout rate</span>
+<span class="sd">    pe_maxlen=5000      # Maksimal panjang positional encoding</span>
+<span class="sd">    )</span>
+<span class="sd">    """</span>
+    <span class="n">decoder</span> <span class="o">=</span> <span class="n">Decoder</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>  <span class="c1"># Ganti dengan parameter yang sesuai untuk Decoder</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    decoder = Decoder(</span>
+<span class="sd">    sos_id=1,                 # ID untuk &lt;sos&gt;</span>
+<span class="sd">    eos_id=2,                 # ID untuk &lt;eos&gt;</span>
+<span class="sd">    n_tgt_vocab=10000,        # Sesuaikan dengan ukuran kosakata target</span>
+<span class="sd">    d_word_vec=512,           # Dimensi embedding kata</span>
+<span class="sd">    n_layers=6,               # Jumlah lapisan decoder</span>
+<span class="sd">    n_head=8,                 # Jumlah kepala attention</span>
+<span class="sd">    d_k=64,                   # Dimensi key</span>
+<span class="sd">    d_v=64,                   # Dimensi value</span>
+<span class="sd">    d_model=512,              # Dimensi embedding</span>
+<span class="sd">    d_inner=2048,             # Dimensi feed-forward network</span>
+<span class="sd">    dropout=0.1,              # Dropout rate</span>
+<span class="sd">    tgt_emb_prj_weight_sharing=True,  # Berbagi bobot embedding</span>
+<span class="sd">    pe_maxlen=5000            # Maksimal panjang positional encoding</span>
+<span class="sd">    )</span>
+<span class="sd">    """</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">Transformer</span><span class="p">(</span><span class="n">encoder</span><span class="o">=</span><span class="n">encoder</span><span class="p">,</span> <span class="n">decoder</span><span class="o">=</span><span class="n">decoder</span><span class="p">)</span>
+
+    <span class="n">checkpoint_path</span> <span class="o">=</span> <span class="s1">'path/to/best-checkpoint.tar'</span>  <span class="c1"># Path ke checkpoint model</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">load_model</span><span class="p">(</span><span class="n">checkpoint_path</span><span class="p">,</span> <span class="n">model</span><span class="p">)</span>
+
+    <span class="c1"># 3. Muat data uji</span>
+    <span class="n">test_data</span> <span class="o">=</span> <span class="n">get_data</span><span class="p">(</span><span class="s1">'path/to/test_id.txt'</span><span class="p">,</span> <span class="s1">'path/to/test_en.txt'</span><span class="p">)</span>  <span class="c1"># Path ke data uji</span>
+
+    <span class="c1"># 4. Hasilkan prediksi</span>
+    <span class="n">predictions</span><span class="p">,</span> <span class="n">references</span> <span class="o">=</span> <span class="n">generate_predictions</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">test_data</span><span class="p">,</span> <span class="n">tgt_idx2char</span><span class="p">)</span>
+
+    <span class="c1"># 5. Hitung metrik evaluasi</span>
+    <span class="n">metrics</span> <span class="o">=</span> <span class="n">calculate_metrics</span><span class="p">(</span><span class="n">predictions</span><span class="p">,</span> <span class="n">references</span><span class="p">)</span>
+
+    <span class="c1"># 6. Tampilkan hasil evaluasi</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">"Evaluation Metrics:"</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">metric</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">metrics</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">metric</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">score</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="jp-Cell jp-MarkdownCell jp-Notebook-cell">
+<div class="jp-Cell-inputWrapper" tabindex="0">
+<div class="jp-Collapser jp-InputCollapser jp-Cell-inputCollapser">
+</div>
+<div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
+</div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput" data-mime-type="text/markdown">
+<p>Contoh Output:</p>
+<div class="highlight"><pre><span></span><span class="nt">Evaluation Metrics</span><span class="p">:</span>
+<span class="nt">BLEU</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.4523</span>
+<span class="nt">ROUGE-1</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5432</span>
+<span class="nt">ROUGE-2</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.3123</span>
+<span class="nt">ROUGE-L</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.4890</span>
+<span class="nt">Accuracy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.1234</span>
+</pre></div>
 </div>
 </div>
 </div>
